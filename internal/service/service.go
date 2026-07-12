@@ -30,6 +30,8 @@ type AppraisalService interface {
 	// request enters the appraisal status. Idempotent per request.
 	CreateFromRequest(ctx context.Context, requestID uuid.UUID) (created bool, err error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Appraisal, error)
+	// GetByRequestID finds the appraisal of a request — for cross-service links.
+	GetByRequestID(ctx context.Context, requestID uuid.UUID) (*domain.Appraisal, error)
 	Update(ctx context.Context, id uuid.UUID, in UpdateInput) (*domain.Appraisal, error)
 	Complete(ctx context.Context, id uuid.UUID) (*domain.Appraisal, error)
 	// UploadReport registers the report file and returns a presigned upload URL.

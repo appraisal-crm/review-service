@@ -67,6 +67,22 @@ func (r *postgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	return &a, nil
 }
 
+func (r *postgresRepository) GetByRequestID(ctx context.Context, requestID uuid.UUID) (*domain.Appraisal, error) {
+	query := `SELECT ` + appraisalColumns + ` FROM appraisals WHERE request_id = $1`
+	var a domain.Appraisal
+	err := r.db.QueryRow(ctx, query, requestID).Scan(
+		&a.ID, &a.RequestID, &a.AppraiserID, &a.Status, &a.Notes,
+		&a.MarketValue, &a.ReportS3Key, &a.CompletedAt, &a.CreatedAt, &a.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &a, nil
+}
+
 func (r *postgresRepository) listComparables(ctx context.Context, appraisalID uuid.UUID) ([]domain.Comparable, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, appraisal_id, data, created_at

@@ -56,6 +56,18 @@ func (s *appraisalService) GetByID(ctx context.Context, id uuid.UUID) (*domain.A
 	return a, nil
 }
 
+func (s *appraisalService) GetByRequestID(ctx context.Context, requestID uuid.UUID) (*domain.Appraisal, error) {
+	a, err := s.repo.GetByRequestID(ctx, requestID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		slog.ErrorContext(ctx, "failed to get appraisal by request", "error", err, "request_id", requestID)
+		return nil, err
+	}
+	return a, nil
+}
+
 func (s *appraisalService) Update(ctx context.Context, id uuid.UUID, in UpdateInput) (*domain.Appraisal, error) {
 	a, err := s.repo.GetByID(ctx, id)
 	if err != nil {

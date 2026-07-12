@@ -26,6 +26,10 @@ type AppraisalRepository interface {
 
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Appraisal, error)
 
+	// GetByRequestID finds the appraisal of a request (one per request, without
+	// comparables — used for cross-service linking).
+	GetByRequestID(ctx context.Context, requestID uuid.UUID) (*domain.Appraisal, error)
+
 	// Update changes appraiser_id/notes/market_value/report_s3_key only (never
 	// status). prevUpdatedAt is the optimistic-lock guard.
 	Update(ctx context.Context, a *domain.Appraisal, prevUpdatedAt time.Time) error
