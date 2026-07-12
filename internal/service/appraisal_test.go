@@ -31,6 +31,9 @@ func (m *mockRepo) Create(ctx context.Context, a *domain.Appraisal) (bool, error
 func (m *mockRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Appraisal, error) {
 	return m.getFn(ctx, id)
 }
+func (m *mockRepo) GetByRequestID(ctx context.Context, requestID uuid.UUID) (*domain.Appraisal, error) {
+	return nil, nil
+}
 func (m *mockRepo) Update(ctx context.Context, a *domain.Appraisal, prev time.Time) error {
 	return m.updateFn(ctx, a, prev)
 }

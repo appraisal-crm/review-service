@@ -30,6 +30,7 @@ func newAppraisalHandler(svc service.AppraisalService) *appraisalHandler {
 // @Produce     json
 // @Security    BearerAuth
 // @Param       appraiser_id query string false "Filter by appraiser ID"
+// @Param       request_id query string false "Find the appraisal of a request (0 or 1 items)"
 // @Param       page  query int false "Page number (default 1)"
 // @Param       limit query int false "Page size (default 20, max 100)"
 // @Success     200 {object} listAllResponse
@@ -38,6 +39,27 @@ func newAppraisalHandler(svc service.AppraisalService) *appraisalHandler {
 // @Failure     500 {object} errorResponse
 // @Router      /appraisals [get]
 func (h *appraisalHandler) List(w http.ResponseWriter, r *http.Request) {
+	// request_id → the one appraisal of that request, as a 0/1-element list so
+	// "not created yet" is an empty result, not a 404.
+	if raw := r.URL.Query().Get("request_id"); raw != "" {
+		requestID, err := uuid.Parse(raw)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid request_id query param")
+			return
+		}
+		a, err := h.svc.GetByRequestID(r.Context(), requestID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				respondJSON(w, http.StatusOK, []*domain.Appraisal{})
+				return
+			}
+			respondError(w, http.StatusInternalServerError, "failed to list appraisals")
+			return
+		}
+		respondJSON(w, http.StatusOK, []*domain.Appraisal{a})
+		return
+	}
+
 	if raw := r.URL.Query().Get("appraiser_id"); raw != "" {
 		appraiserID, err := uuid.Parse(raw)
 		if err != nil {
