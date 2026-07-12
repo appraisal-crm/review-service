@@ -26,8 +26,8 @@ type AppraisalRepository interface {
 
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Appraisal, error)
 
-	// Update changes appraiser_id/notes/market_value only (never status).
-	// prevUpdatedAt is the optimistic-lock guard.
+	// Update changes appraiser_id/notes/market_value/report_s3_key only (never
+	// status). prevUpdatedAt is the optimistic-lock guard.
 	Update(ctx context.Context, a *domain.Appraisal, prevUpdatedAt time.Time) error
 
 	// Complete flips status in_progress→completed and writes the event to the

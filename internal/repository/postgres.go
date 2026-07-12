@@ -90,16 +90,17 @@ func (r *postgresRepository) listComparables(ctx context.Context, appraisalID uu
 	return comparables, rows.Err()
 }
 
-// Update sets appraiser_id, notes and market_value. It never touches status —
-// status changes go through Complete only. Optimistic lock: updated_at must match.
+// Update sets appraiser_id, notes, market_value and report_s3_key. It never
+// touches status — status changes go through Complete only. Optimistic lock:
+// updated_at must match.
 func (r *postgresRepository) Update(ctx context.Context, a *domain.Appraisal, prevUpdatedAt time.Time) error {
 	query := `
 		UPDATE appraisals
-		SET appraiser_id = $1, notes = $2, market_value = $3, updated_at = $4
-		WHERE id = $5 AND updated_at = $6
+		SET appraiser_id = $1, notes = $2, market_value = $3, report_s3_key = $4, updated_at = $5
+		WHERE id = $6 AND updated_at = $7
 	`
 	tag, err := r.db.Exec(ctx, query,
-		a.AppraiserID, a.Notes, a.MarketValue, a.UpdatedAt, a.ID, prevUpdatedAt,
+		a.AppraiserID, a.Notes, a.MarketValue, a.ReportS3Key, a.UpdatedAt, a.ID, prevUpdatedAt,
 	)
 	if err != nil {
 		return err
