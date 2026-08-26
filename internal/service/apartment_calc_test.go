@@ -274,3 +274,91 @@ func TestApplyApartmentCalculation(t *testing.T) {
 		t.Fatal("expected calculation_data to be populated")
 	}
 }
+
+func TestCalculateApartment_StepByStepMath(t *testing.T) {
+	repo := newFormulaMockRepo()
+	svc := NewAppraisalService(repo, stubStorage{})
+
+	input := domain.ApartmentCalculationInput{
+		Subject: domain.ApartmentObjectInput{
+			Area:          50.0,
+			District:      "Центральный", // 120,000
+			Condition:     domain.ConditionGood,
+			RepairClassID: "class_2",
+			Floor:         domain.FloorMiddle,
+		},
+		Analogs: []domain.ApartmentAnalogInput{
+			{
+				PricePerSqM:       100000,
+				BargainingPercent: 5.0,
+				Area:              50.0,
+				District:          "Центральный", // 120,000 => k1 = 1.0
+				Condition:         domain.ConditionGood, // Good vs Good => k3 = 1.0
+				RepairClassID:     "class_2",
+				Floor:             domain.FloorMiddle, // Middle vs Middle => k4 = 1.0
+			},
+			{
+				PricePerSqM:       110000,
+				BargainingPercent: 0.0,
+				Area:              50.0,
+				District:          "Центральный",
+				Condition:         domain.ConditionGood,
+				RepairClassID:     "class_2",
+				Floor:             domain.FloorMiddle,
+			},
+			{
+				PricePerSqM:       120000,
+				BargainingPercent: 10.0,
+				Area:              50.0,
+				District:          "Центральный",
+				Condition:         domain.ConditionGood,
+				RepairClassID:     "class_2",
+				Floor:             domain.FloorMiddle,
+			},
+			{
+				PricePerSqM:       100000,
+				BargainingPercent: 0.0,
+				Area:              50.0,
+				District:          "Центральный",
+				Condition:         domain.ConditionGood,
+				RepairClassID:     "class_2",
+				Floor:             domain.FloorMiddle,
+			},
+		},
+	}
+
+	res, err := svc.CalculateApartment(context.Background(), input)
+	if err != nil {
+		t.Fatalf("CalculateApartment failed: %v", err)
+	}
+
+	// Analog 0: 100,000 - 5% = 95,000. Since all other attributes match subject, final adjusted price is 95,000.
+	if res.Analogs[0].PriceAfterBargaining != 95000 {
+		t.Errorf("expected 95000 after bargaining, got %f", res.Analogs[0].PriceAfterBargaining)
+	}
+	if res.Analogs[0].PriceAfterFloor != 95000 {
+		t.Errorf("expected 95000 final adjusted price, got %f", res.Analogs[0].PriceAfterFloor)
+	}
+
+	// Analog 1: 110,000 - 0% = 110,000.
+	if res.Analogs[1].PriceAfterBargaining != 110000 {
+		t.Errorf("expected 110000 after bargaining, got %f", res.Analogs[1].PriceAfterBargaining)
+	}
+
+	// Analog 2: 120,000 - 10% = 108,000.
+	if res.Analogs[2].PriceAfterBargaining != 108000 {
+		t.Errorf("expected 108000 after bargaining, got %f", res.Analogs[2].PriceAfterBargaining)
+	}
+
+	// Analog 3: 100,000 - 0% = 100,000.
+	if res.Analogs[3].PriceAfterBargaining != 100000 {
+		t.Errorf("expected 100000 after bargaining, got %f", res.Analogs[3].PriceAfterBargaining)
+	}
+
+	if res.WeightedPricePerSqM <= 0 {
+		t.Errorf("expected positive weighted price, got %f", res.WeightedPricePerSqM)
+	}
+	if res.TotalMarketValue <= 0 {
+		t.Errorf("expected positive total market value, got %f", res.TotalMarketValue)
+	}
+}
