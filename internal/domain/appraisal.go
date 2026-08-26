@@ -27,11 +27,12 @@ type Appraisal struct {
 	Status      Status       `json:"status"`
 	Notes       *string      `json:"notes,omitempty"`
 	MarketValue *string      `json:"market_value,omitempty"` // NUMERIC as string to avoid float rounding
-	ReportS3Key *string      `json:"report_s3_key,omitempty"`
-	Comparables []Comparable `json:"comparables,omitempty"` // loaded on demand, not a column
-	CompletedAt *time.Time   `json:"completed_at,omitempty"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	ReportS3Key     *string         `json:"report_s3_key,omitempty"`
+	Comparables     []Comparable    `json:"comparables,omitempty"` // loaded on demand, not a column
+	CalculationData json.RawMessage `json:"calculation_data,omitempty" swaggertype:"object"`
+	CompletedAt     *time.Time      `json:"completed_at,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // Comparable is one analog object the appraiser bases the evaluation on. Its

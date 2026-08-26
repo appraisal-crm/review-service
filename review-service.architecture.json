@@ -1,0 +1,275 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Архитектура review-service (Appraisal CRM)",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "calculation-engine",
+        "label": "Движок расчёта оценки",
+        "focus": ["api_router", "appraisal_svc", "calc_engine", "postgres_db"],
+        "note": "8-этапный сравнительный расчёт стоимости (4 аналога) и управление формулами"
+      },
+      {
+        "id": "event-driven-lifecycle",
+        "label": "Событийный жизненный цикл",
+        "focus": ["request_service", "kafka_consumer", "dedup_redis", "appraisal_svc", "outbox_relay", "postgres_db"],
+        "note": "Потребление request.status_changed с дедупликацией в Redis и публикация report.ready через Outbox"
+      },
+      {
+        "id": "appraiser-workflow",
+        "label": "Рабочий процесс оценщика",
+        "focus": ["clients", "keycloak", "api_router", "appraisal_svc", "storage_s3", "postgres_db"],
+        "note": "Авторизация Keycloak, расчёт аналогов, загрузка отчёта в S3 и завершение оценки"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "frontend",
+      "label": "Web-клиенты",
+      "sublabel": "Оценщик & Админ (SPA)",
+      "pos": [50, 140],
+      "size": [150, 64],
+      "brand": "react"
+    },
+    {
+      "id": "keycloak",
+      "type": "security",
+      "label": "Keycloak 26",
+      "sublabel": "OAuth2 / JWKS (RS256)",
+      "pos": [50, 320],
+      "size": [150, 64],
+      "tag": "Auth & RBAC"
+    },
+    {
+      "id": "request_service",
+      "type": "external",
+      "label": "Request Service",
+      "sublabel": "request-service",
+      "pos": [50, 500],
+      "size": [150, 64],
+      "tag": "Заявки & Статусы"
+    },
+    {
+      "id": "api_router",
+      "type": "backend",
+      "label": "HTTP API Router",
+      "sublabel": "Go / chi (:8084)",
+      "pos": [320, 140],
+      "size": [160, 64],
+      "tag": "Middleware & RBAC"
+    },
+    {
+      "id": "dedup_redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "Дедупликация (:6379)",
+      "pos": [320, 320],
+      "size": [160, 64],
+      "tag": "event_id TTL check",
+      "brand": "redis"
+    },
+    {
+      "id": "kafka_consumer",
+      "type": "messagebus",
+      "label": "Kafka Consumer",
+      "sublabel": "request.events",
+      "pos": [320, 500],
+      "size": [160, 64],
+      "tag": "request.status_changed",
+      "brand": "apache-kafka"
+    },
+    {
+      "id": "appraisal_svc",
+      "type": "backend",
+      "label": "Сервис оценки",
+      "sublabel": "State Machine & Aggregates",
+      "pos": [600, 140],
+      "size": [180, 64],
+      "tag": "in_progress → completed"
+    },
+    {
+      "id": "storage_s3",
+      "type": "cloud",
+      "label": "S3 Object Storage",
+      "sublabel": "Yandex Cloud S3",
+      "pos": [600, 320],
+      "size": [180, 64],
+      "tag": "PDF-отчёты оценки"
+    },
+    {
+      "id": "outbox_relay",
+      "type": "messagebus",
+      "label": "Outbox Relay",
+      "sublabel": "review.events",
+      "pos": [600, 500],
+      "size": [180, 64],
+      "tag": "report.ready producer",
+      "brand": "apache-kafka"
+    },
+    {
+      "id": "calc_engine",
+      "type": "backend",
+      "label": "Движок оценки",
+      "sublabel": "Сравнительный подход",
+      "pos": [890, 140],
+      "size": [190, 70],
+      "tag": "8-этапный расчёт (4 аналога)"
+    },
+    {
+      "id": "postgres_db",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "review_db (:5432)",
+      "pos": [890, 370],
+      "size": [190, 80],
+      "tag": "appraisals, configs, outbox",
+      "brand": "postgresql"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "review-service (Go daemon :8084)",
+      "wraps": ["api_router", "appraisal_svc", "calc_engine", "kafka_consumer", "outbox_relay"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Выделенный модуль: Движок расчёта оценки",
+      "wraps": ["calc_engine"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "clients-to-api",
+      "from": "clients",
+      "to": "api_router",
+      "label": "HTTPS :8084",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-to-keycloak",
+      "from": "api_router",
+      "to": "keycloak",
+      "label": "JWKS RS256",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "api-to-svc",
+      "from": "api_router",
+      "to": "appraisal_svc",
+      "label": "Методы API",
+      "variant": "emphasis"
+    },
+    {
+      "id": "svc-to-calc",
+      "from": "appraisal_svc",
+      "to": "calc_engine",
+      "label": "Вызов расчёта",
+      "variant": "emphasis"
+    },
+    {
+      "id": "calc-to-db",
+      "from": "calc_engine",
+      "to": "postgres_db",
+      "label": "formula_configs",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 30
+    },
+    {
+      "id": "svc-to-s3",
+      "from": "appraisal_svc",
+      "to": "storage_s3",
+      "label": "Presigned URL",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 30
+    },
+    {
+      "id": "svc-to-db",
+      "from": "appraisal_svc",
+      "to": "postgres_db",
+      "label": "appraisals TX",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "reqsvc-to-kafka",
+      "from": "request_service",
+      "to": "kafka_consumer",
+      "label": "status_changed",
+      "variant": "emphasis"
+    },
+    {
+      "id": "kafka-to-redis",
+      "from": "kafka_consumer",
+      "to": "dedup_redis",
+      "label": "event_id TTL",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "kafka-to-svc",
+      "from": "kafka_consumer",
+      "to": "appraisal_svc",
+      "label": "Создать оценку",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "outbox-from-db",
+      "from": "outbox_relay",
+      "to": "postgres_db",
+      "label": "Опрос outbox",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "outbox-to-reqsvc",
+      "from": "outbox_relay",
+      "to": "request_service",
+      "label": "report.ready",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Движок расчёта оценки (Выделенный модуль)",
+      "items": [
+        "Сравнительный подход по 4 объектам-аналогам (Apartment comparative valuation)",
+        "8 этапов: торг, локация/район, масштаб площади, отделка/состояние, этаж, взвешивание",
+        "Динамические коэффициенты и матрицы в таблице formula_configs (управление admin)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Событийная архитектура и надёжность",
+      "items": [
+        "Потребление request.status_changed с проверкой дедупликации в Redis (TTL)",
+        "Транзакционный Outbox: гарантированная публикация report.ready в Kafka",
+        "Идемпотентность создания оценки через UNIQUE(request_id) в PostgreSQL"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Безопасность и хранение данных",
+      "items": [
+        "RBAC-авторизация (роли appraiser и admin) с валидацией JWKS Keycloak",
+        "Заморозка агрегата оценки при статусе completed (CAS-проверка)",
+        "Бинарные файлы отчётов в S3 Yandex Cloud с доступом по Presigned URL"
+      ]
+    }
+  ]
+}

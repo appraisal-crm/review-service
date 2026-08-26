@@ -48,4 +48,8 @@ type AppraisalRepository interface {
 
 	ListByAppraiserID(ctx context.Context, appraiserID uuid.UUID) ([]*domain.Appraisal, error)
 	ListAll(ctx context.Context, limit, offset int) ([]*domain.Appraisal, error)
+
+	GetFormulaConfig(ctx context.Context, id string) (*domain.ApartmentFormulaConfig, error)
+	SaveFormulaConfig(ctx context.Context, cfg *domain.ApartmentFormulaConfig) error
 }
+

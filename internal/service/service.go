@@ -40,4 +40,11 @@ type AppraisalService interface {
 	DeleteComparable(ctx context.Context, appraisalID, comparableID uuid.UUID) error
 	ListByAppraiserID(ctx context.Context, appraiserID uuid.UUID) ([]*domain.Appraisal, error)
 	ListAll(ctx context.Context, limit, offset int) ([]*domain.Appraisal, error)
+
+	GetApartmentFormulaConfig(ctx context.Context) (*domain.ApartmentFormulaConfig, error)
+	UpdateApartmentFormulaConfig(ctx context.Context, cfg *domain.ApartmentFormulaConfig, updatedBy string) (*domain.ApartmentFormulaConfig, error)
+	ResetApartmentFormulaConfig(ctx context.Context, updatedBy string) (*domain.ApartmentFormulaConfig, error)
+	CalculateApartment(ctx context.Context, in domain.ApartmentCalculationInput) (*domain.ApartmentCalculationResult, error)
+	ApplyApartmentCalculation(ctx context.Context, appraisalID uuid.UUID, in domain.ApartmentCalculationInput) (*domain.Appraisal, error)
 }
+
