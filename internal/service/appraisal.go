@@ -266,3 +266,71 @@ func (s *appraisalService) ListAll(ctx context.Context, limit, offset int) ([]*d
 	}
 	return appraisals, nil
 }
+
+func (s *appraisalService) ApplyApartmentCalculation(ctx context.Context, appraisalID uuid.UUID, in domain.ApartmentCalculationInput) (*domain.Appraisal, error) {
+	a, err := s.repo.GetByID(ctx, appraisalID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+
+	if a.Status != domain.StatusInProgress {
+		slog.WarnContext(ctx, "cannot apply calculation to a completed appraisal", "appraisal_id", appraisalID)
+		return nil, domain.ErrInvalidStatus
+	}
+
+	calcRes, err := s.CalculateApartment(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	calcBytes, err := json.Marshal(calcRes)
+	if err != nil {
+		return nil, err
+	}
+
+	mvStr := formatFloatString(calcRes.TotalMarketValue)
+	a.MarketValue = &mvStr
+	a.CalculationData = calcBytes
+
+	prevUpdatedAt := a.UpdatedAt
+	a.UpdatedAt = time.Now()
+
+	if err := s.repo.Update(ctx, a, prevUpdatedAt); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		if errors.Is(err, repository.ErrConflict) {
+			slog.WarnContext(ctx, "concurrent update detected", "appraisal_id", appraisalID)
+			return nil, domain.ErrConflict
+		}
+		slog.ErrorContext(ctx, "failed to apply calculation to appraisal", "error", err, "appraisal_id", appraisalID)
+		return nil, err
+	}
+
+	// Also sync 4 comparables for reporting consistency
+	// (Clean up old comparables if any and add the 4 analogs)
+	for _, comp := range a.Comparables {
+		_ = s.repo.DeleteComparable(ctx, appraisalID, comp.ID)
+	}
+	for i, analog := range in.Analogs {
+		compData, _ := json.Marshal(map[string]any{
+			"analog_no":          i + 1,
+			"price_per_sqm":      analog.PricePerSqM,
+			"bargaining_percent": analog.BargainingPercent,
+			"area":               analog.Area,
+			"district":           analog.District,
+			"condition":          analog.Condition,
+			"repair_class_id":    analog.RepairClassID,
+			"floor":              analog.Floor,
+			"adjusted_price":     calcRes.Analogs[i].PriceAfterFloor,
+			"weight":             calcRes.Analogs[i].Weight,
+		})
+		_, _ = s.AddComparable(ctx, appraisalID, compData)
+	}
+
+	return s.GetByID(ctx, appraisalID)
+}
+

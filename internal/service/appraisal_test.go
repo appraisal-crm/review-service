@@ -52,6 +52,13 @@ func (m *mockRepo) ListByAppraiserID(ctx context.Context, id uuid.UUID) ([]*doma
 func (m *mockRepo) ListAll(ctx context.Context, limit, offset int) ([]*domain.Appraisal, error) {
 	return nil, nil
 }
+func (m *mockRepo) GetFormulaConfig(ctx context.Context, id string) (*domain.ApartmentFormulaConfig, error) {
+	return nil, repository.ErrNotFound
+}
+func (m *mockRepo) SaveFormulaConfig(ctx context.Context, cfg *domain.ApartmentFormulaConfig) error {
+	return nil
+}
+
 
 // stubStorage satisfies storage.ReportStorage without any I/O.
 type stubStorage struct{}

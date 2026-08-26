@@ -15,7 +15,7 @@ func NewRouter(svc service.AppraisalService, jwks keyfunc.Keyfunc, allowedOrigin
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: allowedOrigins,
-		AllowedMethods: []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Authorization", "Content-Type"},
 	}))
 	r.Use(chimiddleware.RequestID)
@@ -33,6 +33,7 @@ func NewRouter(svc service.AppraisalService, jwks keyfunc.Keyfunc, allowedOrigin
 		r.Use(middleware.RequireRoles("appraiser", "admin"))
 
 		ah := newAppraisalHandler(svc)
+		apth := newApartmentHandler(svc)
 
 		r.Get("/appraisals", ah.List)
 		r.Get("/appraisals/{id}", ah.GetByID)
@@ -41,6 +42,18 @@ func NewRouter(svc service.AppraisalService, jwks keyfunc.Keyfunc, allowedOrigin
 		r.Delete("/appraisals/{id}/comparables/{comparableID}", ah.DeleteComparable)
 		r.Post("/appraisals/{id}/report", ah.UploadReport)
 		r.Post("/appraisals/{id}/complete", ah.Complete)
+
+		// Calculation endpoints
+		r.Post("/calculate/apartment", apth.Calculate)
+		r.Post("/appraisals/{id}/calculate-apartment", apth.ApplyToAppraisal)
+		r.Get("/settings/apartment-formula", apth.GetFormulaConfig)
+
+		// Admin-only formula configuration endpoints
+		r.Group(func(adminRouter chi.Router) {
+			adminRouter.Use(middleware.RequireRoles("admin"))
+			adminRouter.Put("/settings/apartment-formula", apth.UpdateFormulaConfig)
+			adminRouter.Post("/settings/apartment-formula/reset", apth.ResetFormulaConfig)
+		})
 	})
 
 	return r

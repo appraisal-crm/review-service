@@ -25,19 +25,19 @@ func NewPostgresRepository(db *pgxpool.Pool) AppraisalRepository {
 // market_value is NUMERIC in Postgres but travels as *string in Go (no float
 // rounding), hence the ::text on read; on write Postgres coerces the text
 // parameter to NUMERIC itself.
-const appraisalColumns = `id, request_id, appraiser_id, status, notes, market_value::text, report_s3_key, completed_at, created_at, updated_at`
+const appraisalColumns = `id, request_id, appraiser_id, status, notes, market_value::text, report_s3_key, calculation_data, completed_at, created_at, updated_at`
 
 func (r *postgresRepository) Create(ctx context.Context, a *domain.Appraisal) (bool, error) {
 	// ON CONFLICT (request_id): one appraisal per request. A redelivered creation
 	// event matches nothing new, so RowsAffected() is 0 → created=false.
 	query := `
-		INSERT INTO appraisals (id, request_id, appraiser_id, status, notes, market_value, report_s3_key, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO appraisals (id, request_id, appraiser_id, status, notes, market_value, report_s3_key, calculation_data, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (request_id) DO NOTHING
 	`
 	tag, err := r.db.Exec(ctx, query,
 		a.ID, a.RequestID, a.AppraiserID, a.Status, a.Notes,
-		a.MarketValue, a.ReportS3Key, a.CreatedAt, a.UpdatedAt,
+		a.MarketValue, a.ReportS3Key, a.CalculationData, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
 		return false, err
@@ -50,7 +50,7 @@ func (r *postgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	var a domain.Appraisal
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&a.ID, &a.RequestID, &a.AppraiserID, &a.Status, &a.Notes,
-		&a.MarketValue, &a.ReportS3Key, &a.CompletedAt, &a.CreatedAt, &a.UpdatedAt,
+		&a.MarketValue, &a.ReportS3Key, &a.CalculationData, &a.CompletedAt, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -72,7 +72,7 @@ func (r *postgresRepository) GetByRequestID(ctx context.Context, requestID uuid.
 	var a domain.Appraisal
 	err := r.db.QueryRow(ctx, query, requestID).Scan(
 		&a.ID, &a.RequestID, &a.AppraiserID, &a.Status, &a.Notes,
-		&a.MarketValue, &a.ReportS3Key, &a.CompletedAt, &a.CreatedAt, &a.UpdatedAt,
+		&a.MarketValue, &a.ReportS3Key, &a.CalculationData, &a.CompletedAt, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -106,17 +106,17 @@ func (r *postgresRepository) listComparables(ctx context.Context, appraisalID uu
 	return comparables, rows.Err()
 }
 
-// Update sets appraiser_id, notes, market_value and report_s3_key. It never
-// touches status — status changes go through Complete only. Optimistic lock:
+// Update sets appraiser_id, notes, market_value, report_s3_key and calculation_data.
+// It never touches status — status changes go through Complete only. Optimistic lock:
 // updated_at must match.
 func (r *postgresRepository) Update(ctx context.Context, a *domain.Appraisal, prevUpdatedAt time.Time) error {
 	query := `
 		UPDATE appraisals
-		SET appraiser_id = $1, notes = $2, market_value = $3, report_s3_key = $4, updated_at = $5
-		WHERE id = $6 AND updated_at = $7
+		SET appraiser_id = $1, notes = $2, market_value = $3, report_s3_key = $4, calculation_data = $5, updated_at = $6
+		WHERE id = $7 AND updated_at = $8
 	`
 	tag, err := r.db.Exec(ctx, query,
-		a.AppraiserID, a.Notes, a.MarketValue, a.ReportS3Key, a.UpdatedAt, a.ID, prevUpdatedAt,
+		a.AppraiserID, a.Notes, a.MarketValue, a.ReportS3Key, a.CalculationData, a.UpdatedAt, a.ID, prevUpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -241,13 +241,54 @@ func scanAppraisals(rows pgx.Rows) ([]*domain.Appraisal, error) {
 		var a domain.Appraisal
 		if err := rows.Scan(
 			&a.ID, &a.RequestID, &a.AppraiserID, &a.Status, &a.Notes,
-			&a.MarketValue, &a.ReportS3Key, &a.CompletedAt, &a.CreatedAt, &a.UpdatedAt,
+			&a.MarketValue, &a.ReportS3Key, &a.CalculationData, &a.CompletedAt, &a.CreatedAt, &a.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
 		appraisals = append(appraisals, &a)
 	}
 	return appraisals, rows.Err()
+}
+
+func (r *postgresRepository) GetFormulaConfig(ctx context.Context, id string) (*domain.ApartmentFormulaConfig, error) {
+	query := `SELECT config, updated_at, updated_by FROM formula_configs WHERE id = $1`
+	var (
+		rawConfig []byte
+		updatedAt time.Time
+		updatedBy *string
+	)
+	err := r.db.QueryRow(ctx, query, id).Scan(&rawConfig, &updatedAt, &updatedBy)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	var cfg domain.ApartmentFormulaConfig
+	if err := json.Unmarshal(rawConfig, &cfg); err != nil {
+		return nil, err
+	}
+	cfg.ID = id
+	cfg.UpdatedAt = updatedAt
+	cfg.UpdatedBy = updatedBy
+	return &cfg, nil
+}
+
+func (r *postgresRepository) SaveFormulaConfig(ctx context.Context, cfg *domain.ApartmentFormulaConfig) error {
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	query := `
+		INSERT INTO formula_configs (id, config, updated_at, updated_by)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (id) DO UPDATE
+		SET config = EXCLUDED.config, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by
+	`
+	_, err = r.db.Exec(ctx, query, cfg.ID, raw, cfg.UpdatedAt, cfg.UpdatedBy)
+	return err
 }
 
 // notFoundOrConflict disambiguates a 0-row UPDATE: missing row → ErrNotFound,
@@ -262,3 +303,4 @@ func (r *postgresRepository) notFoundOrConflict(ctx context.Context, id uuid.UUI
 	}
 	return ErrConflict
 }
+

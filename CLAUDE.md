@@ -15,10 +15,10 @@ Digitizes the full cycle: client submits request → inspector visits the proper
 enters the appraisal stage, lets the appraiser record comparables, notes and the
 market value, register the report file, and emits `report.ready` when done.
 
-> **Scope guard:** the appraisal *calculation engine* is out of scope until the
-> client formalizes the formulas in a Function Spec (BRD risk R-001, BR-011).
-> `market_value` is manual input; `comparables.data` is free-form JSONB. When the
-> spec lands, add typed fields/calculations additively — do not invent formulas.
+> **Calculation engine:** the apartment appraisal calculation engine (comparative
+> approach with 4 analogs) is implemented. Formula parameters, baseline district prices,
+> scale function constants, repair classes, and floor matrix are stored in `formula_configs`
+> and editable by administrators (`admin` role). Other property types remain manual.
 
 ## Roles
 
@@ -57,12 +57,18 @@ request-service advance to `report_sent`.
 - **Consumer + producer.** Consumes `request.status_changed` (topic
   `request.events`); produces `report.ready` (topic `review.events`) via a
   transactional **outbox**.
-- **Aggregate:** `appraisals` (one per request, `request_id` UNIQUE) +
-  `comparables` (free-form JSONB) + `appraisal_statuses` lookup.
+- **Aggregate:** `appraisals` (one per request, `request_id` UNIQUE, `calculation_data` JSONB) +
+  `comparables` (free-form JSONB) + `formula_configs` (admin-managed formula parameters) +
+  `appraisal_statuses` lookup.
 - **Appraisal state machine:** `in_progress → completed` only. Completion is the
   single event-producing transition (CAS on `status = 'in_progress'`). A completed
   appraisal is **frozen** — update/comparables/report are rejected (422).
-- **Market value:** manual NUMERIC input, carried as a string in Go/JSON (no floats).
+- **Calculation engine & endpoints:** apartment appraisal comparative engine with 8 steps
+  (bargaining, district prices, area scale function, repair/condition, floor matrix, weights).
+  - `POST /calculate/apartment` — instant calculation breakdown.
+  - `POST /appraisals/{id}/calculate-apartment` — calculate, save `calculation_data`, update `market_value` and sync `comparables`.
+  - `GET /settings/apartment-formula`, `PUT /settings/apartment-formula` — admin formula & coefficient configuration.
+- **Market value:** NUMERIC input or calculated result, carried as a string in Go/JSON (no floats).
 - **Reports:** binaries live in S3; only the object key is stored. Uploads go
   through a presigned URL. `internal/storage` is a stub until the S3 SDK is wired.
 - **Consumer idempotency:** dedup by `event_id` in **Redis** — check before,
@@ -162,7 +168,7 @@ make migrate-down
 
 - No synchronous cross-service calls between business services — events via Kafka only
 - No cross-database JOINs between services
-- No appraisal calculation formulas until the client's Function Spec lands — manual input only
+- Other property types (houses, land, commercial) remain manual until their specs land
 - Do not switch config from `os.Getenv` to viper without explicit agreement
 - Never modify already-applied migrations — new additive migrations only
 - Never publish to Kafka straight from a handler/service — go through the outbox
