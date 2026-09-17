@@ -33,3 +33,9 @@ go.work.sum
 
 # Generated Swagger docs (make generate)
 /api/
+
+# archify architecture model + render output
+*.architecture.json
+*-architecture.html
+*-architecture.visual-check.json
+*-architecture.visual-check.html
